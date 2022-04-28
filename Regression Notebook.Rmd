@@ -1,0 +1,259 @@
+---
+output:
+  html_document: default
+  word_document: default
+---
+
+REGRESSION ANALSIS 
+
+Abstract
+This notebook was part of the linear regression course project at Faculty of Economics and Political Sciences. 
+The goal is to model the relationship between life expectancy and other 8 variables using linear regression
+
+APPROACH
+1. check pair-plots
+2. transform non-linear and skewed variables
+3. Fix Multi-collinearity
+4. selections process
+5. Fix random part assumptions
+
+
+Designation:
+ 
+1. the rank on the human development index    (hdi_rnk)
+2. total population in million    (pop)
+3. population with at least some secondary education (% ages 25 and older)    (educated_above25)
+4. gross domestic product per capita    (gdp_capita)
+5.unemployment rate (% of labor force)    (unemployment_rate)
+6. urban population to the total population (%)   (urban_pop)    
+7. current health expenditure (% of GDP)    (health_exp)
+8. government expenditure on education (% of GDP).    (edu_exp)
+
+
+The data was obtained from a sample of 50 countries from the United Nations Human Development Report of 2019. 
+
+
+```{r include=FALSE}
+#insall these packages
+library(leaps)
+library(plotly)
+library(dplyr)
+library(GGally)
+library(readxl)
+```
+
+
+```{r include=FALSE}
+dataset <- read_excel("C:\\Users\\k_abo\\Downloads\\dataset3.xlsx", na = ".." )
+
+```
+
+```{r}
+head(dataset)
+```
+
+
+```{r}
+#remove first two columns index column and country names
+df_num <- dataset[,-c(1,2)] 
+
+```
+
+
+Remove the missing values
+```{r}
+
+#remove missing values
+sum(is.na(df_num))
+df_num <- na.omit(df_num)
+head(df_num)
+```
+
+Inspect correlations among the features
+
+correlation heatmap
+```{r}
+ggcorr(df_num)
+```
+
+As you can see life_exp negatively correlates with the hdi_rank, unemployment_rate, and positively with the rest  
+This is to gain guidance early on about the strength of the features and their significance to the study.  
+
+let's examine these correlations closely with a pairplot
+pairplot 
+```{r}
+ggpairs(df_num)
+```
+
+the goal of this plot is to check multicollinearity and the linear relationship of the covariates with response variable.If the gdp_capita is not linear with the life_exp consider either taking the log or adding a quadratic term when modelling.  
+
+
+Checking Multicollinearity: Redundant information
+
+variables with 0.8 or above should not be in he same model ,however, some use a benchmark of 0.7 to define multicollineariy between the covariates. This is also associated to a VIF value of 5 
+
+clearly, the gdp_capita and educated_above25 exhibit a pearson correlation coefficient of almost 0.8 with the hdi_rank
+we need to either drop them or the hdi_rnk in order to proceed. Remember that this is a crucial step, as you have to satisfy the deterministic part assumptions first to have a valid model. 
+
+To solve the Multicollinearity problem, one might solve this by transforming the features.
+if taking the log did not work consider either dropping the features causing it or advanced techniques to solve this issue such as principal component analysis (PCA).
+
+In this case, drop one of the features and split the data-set into two and work with them simultaneously. The first would be without the hdi_rnk, and the second was with the GDP per capita and population with at least secondary education and above 25 dropped. and see who would yield the highest adjusted R-squared.
+
+For the sake of this notebook, proceed with the second data-set (without gdp_capita annd educated above25) as its best model exhibited lower R-squared.  
+
+drop features
+```{r}
+df_num <- df_num[, -c(4,5)]
+head(df_num)
+```
+
+
+Selection process: best subsets
+
+Regsubsets function evaluates 64 models (2^p) and plots their corresponding R-squared, you could should choose adjusted R-squared, aic, or bic, however, this is totally subjective.
+this step is just for guidance about what could be achieved given his data-set.  
+```{r}
+model <- regsubsets(life_exp ~.,data  = df_num)
+fitted <- summary(model)
+```
+
+column names
+```{r}
+names(fitted)
+```
+
+The following plot shows Adjusted R-squared against the number variables 
+```{r}
+fitted <- data.frame(fitted$adjr2, fitted$which)
+ggplot(data = fitted, aes(x = c(1,2,3,4,5,6) , y = fitted.adjr2)) + geom_point(size = 2, col = 'steelblue') + ylab('Adjusted R_squared') + xlab('Number of variables')
+```
+
+Theoretically only 1 variable would yield the highest R squared. As seen in the graph below, increasing the variables in this model pulls the adjusted R squared down. Thus, our best possible guess would be 1 variable to model the relation with healthy life expectancy. This is graph is only for guidance and a reference of what could possibly be achieved.
+
+
+let's fit all the covariates to see which parameters are significant. we could then pick out which ones are significant.
+
+```{r}
+model <- lm(life_exp ~ . , data = df_num) 
+summary(model) 
+```
+
+Luckily, only the hdi_rnk has the significant coefficient with a p-value of less 0.05.
+
+
+Exclude the insignificant ones
+```{r}
+model <- lm(life_exp~hdi_rnk, data = df_num)
+summary(model)
+```
+
+
+Thus, the hdi_rnk would model the relationship with the life_exp better than the rest, as it yielded a higher R-squared
+
+This is how the model looks like
+```{r}
+ggplot(data = df_num, aes(x=hdi_rnk, y = life_exp)) + geom_point(size = 2, col = 'steelblue')+ geom_line(mapping = aes(hdi_rnk,fitted(model)), col = 'darkorange') + xlab('HDI rank') + ylab('Life expectancy') + ggtitle('Life expectancy-HDI rank model')
+
+```
+
+
+
+Before checking the random part assumptions, we fit the model again but by handling missing values differently.
+
+let's get the original data-set, drop all the unused columns then remove the missing values
+
+```{r}
+head(dataset)
+```
+
+
+```{r}
+new_df <- dataset[,c(3,4)]
+sum(is.na(new_df))
+new_df <- na.omit(new_df)
+new_df
+```
+
+
+
+Initially there were 36 observations out of 50. This way, there are 49 valid observations out 50.
+
+Note: The last columns of the data-set had 14 missing values  
+
+
+```{r}
+model <- lm(data = new_df, life_exp ~ hdi_rnk)
+summary(model)
+```
+
+Instead of an R-squared of 0.67, now 71,12 of the variability was explained
+with 47 degrees of freedom 
+
+```{r}
+ggplotly(ggplot(data = new_df, aes(x=hdi_rnk, y = life_exp)) + geom_point(size = 2, col ='steelblue') + geom_line(mapping = aes(x = hdi_rnk, y = fitted(model)), col = 'darkorange') + xlab('HDI rank') + ylab('Life expectancy') + ggtitle('Life expectancy-HDI rank model'))
+```
+
+
+Outliers
+
+In regression analysis there is a formal way to detecting outliers; cooks-distance
+cooks distance simply recalculates the model for ever point to determine influential points  
+one could definitely detect and delete this outlier without using cooks distance, but it is a formal way to detect influential points that have leverage.  
+
+removing outliers
+```{r}
+cooks_distance <- cooks.distance(model)
+influential <- as.numeric(names(cooks_distance)[(cooks_distance > (4/nrow(new_df)))])
+```
+
+```{r}
+new_df <- new_df[-49,]
+```
+
+model after filtering
+```{r}
+model <- lm(life_exp ~ hdi_rnk, data = new_df)
+summary(model)
+
+```
+R-squared of 0.7041
+we explained 70.41% of the variability
+
+
+Residuals diagnostics:
+
+Random part Assumptions: i.d.d
+1. Error has zero mean 
+2. Homoscedasticy : variance is constant  
+3. The errors are independent
+4. Errors are normally distributed
+
+The last assumption is not required if you're only modelling the relationship, however, if the goal is to predict values and construct confidence intervals then this MUST be satisfied.    
+
+```{r}
+
+new_df <- data.frame(new_df, fitted(model), residuals(model)) #fitted values & residuals in a dataframe
+
+ggplot(data = new_df, aes(x =fitted.model. , y =  residuals.model.)) + geom_point(size = 2 , col = 'steelblue') + geom_hline(yintercept = 0, col = 'darkorange')
+```
+
+
+The residuals look random, and equally distributed around the zero line. In addition to that they appear to have constant variance. If they were not, then consider taking the log of the response variable (life_exp) or even try to standardize the residuals. If neither fixed the assumptions then try to increase the sample size otherwise, you should state that you have doubts about the variance. 
+
+if the residuals showed a quadratic shape then plot the residuals against the other explanatory variables to determine where the problem lies. 
+
+Note that you should have known where potential problems could arise when plotting the pair-plot. checking the nature of the relationships with the response variable is extremely helpful.   
+
+
+
+Regarding the normality assumption, it is only needed if we are going to confidence and prediction intervals. However, we checked it.
+The residuals histogram and QQ-plot to satisfy all the assumptions.
+```{r}
+hist(residuals(model), breaks = 10, col = "steelblue")
+```
+
+
+
+This is by no means a hard example; only 50 obs. with 8 features, assumptions were satisfied easily, unlike other data where assumptions are still invalid after transformations.
+however the underlying approach taken here is valid.
